@@ -13,7 +13,7 @@ export class RestAPIStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Tables 
+    // Tables
     const moviesTable = new dynamodb.Table(this, "MoviesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "movieId", type: dynamodb.AttributeType.NUMBER },
@@ -21,8 +21,7 @@ export class RestAPIStack extends cdk.Stack {
       tableName: "Movies",
     });
 
-    
-    // Functions 
+    // Functions
     const getMovieByIdFn = new lambdanode.NodejsFunction(
       this,
       "GetMovieByIdFn",
@@ -34,48 +33,60 @@ export class RestAPIStack extends cdk.Stack {
         memorySize: 128,
         environment: {
           TABLE_NAME: moviesTable.tableName,
-          REGION: 'eu-west-1',
+          REGION: "eu-west-1",
         },
       }
-      );
-      
-      const getAllMoviesFn = new lambdanode.NodejsFunction(
-        this,
-        "GetAllMoviesFn",
-        {
-          architecture: lambda.Architecture.ARM_64,
-          runtime: lambda.Runtime.NODEJS_16_X,
-          entry: `${__dirname}/../lambdas/getAllMovies.ts`,
-          timeout: cdk.Duration.seconds(10),
-          memorySize: 128,
-          environment: {
-            TABLE_NAME: moviesTable.tableName,
-            REGION: 'eu-west-1',
+    );
+
+    const getAllMoviesFn = new lambdanode.NodejsFunction(
+      this,
+      "GetAllMoviesFn",
+      {
+        architecture: lambda.Architecture.ARM_64,
+        runtime: lambda.Runtime.NODEJS_16_X,
+        entry: `${__dirname}/../lambdas/getAllMovies.ts`,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        environment: {
+          TABLE_NAME: moviesTable.tableName,
+          REGION: "eu-west-1",
+        },
+      }
+    );
+    const newMovieFn = new lambdanode.NodejsFunction(this, "AddMovieFn", {
+      architecture: lambda.Architecture.ARM_64,
+      runtime: lambda.Runtime.NODEJS_16_X,
+      entry: `${__dirname}/../lambdas/addMovie.ts`,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 128,
+      environment: {
+        TABLE_NAME: moviesTable.tableName,
+        REGION: "eu-west-1",
+      },
+    });
+
+    new custom.AwsCustomResource(this, "moviesddbInitData", {
+      onCreate: {
+        service: "DynamoDB",
+        action: "batchWriteItem",
+        parameters: {
+          RequestItems: {
+            [moviesTable.tableName]: generateBatch(movies),
           },
-        }
-        );
-        
-        new custom.AwsCustomResource(this, "moviesddbInitData", {
-          onCreate: {
-            service: "DynamoDB",
-            action: "batchWriteItem",
-            parameters: {
-              RequestItems: {
-                [moviesTable.tableName]: generateBatch(movies),
-              },
-            },
-            physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"), //.of(Date.now().toString()),
-          },
-          policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
-            resources: [moviesTable.tableArn],
-          }),
-        });
-        
-        // Permissions 
-        moviesTable.grantReadData(getMovieByIdFn)
-        moviesTable.grantReadData(getAllMoviesFn)
-        
-        // REST API 
+        },
+        physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"), //.of(Date.now().toString()),
+      },
+      policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
+        resources: [moviesTable.tableArn],
+      }),
+    });
+
+    // Permissions
+    moviesTable.grantReadData(getMovieByIdFn);
+    moviesTable.grantReadData(getAllMoviesFn);
+    moviesTable.grantReadWriteData(newMovieFn);
+
+    // REST API
     const api = new apig.RestApi(this, "RestAPI", {
       description: "demo api",
       deployOptions: {
@@ -95,14 +106,14 @@ export class RestAPIStack extends cdk.Stack {
       "GET",
       new apig.LambdaIntegration(getAllMoviesFn, { proxy: true })
     );
-
+    moviesEndpoint.addMethod(
+      "POST",
+      new apig.LambdaIntegration(newMovieFn, { proxy: true })
+    );
     const movieEndpoint = moviesEndpoint.addResource("{movieId}");
     movieEndpoint.addMethod(
       "GET",
       new apig.LambdaIntegration(getMovieByIdFn, { proxy: true })
     );
-        
-      }
-      
-    }
-    
+  }
+}
