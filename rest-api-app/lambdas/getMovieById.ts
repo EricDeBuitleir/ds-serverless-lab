@@ -78,4 +78,3 @@ function createDDbDocClient() {
 }
 
 
-// test
