@@ -128,6 +128,8 @@ export class RestAPIStack extends cdk.Stack {
     moviesTable.grantReadWriteData(newMovieFn);
     moviesTable.grantReadWriteData(deleteMovieFn);
     movieCastsTable.grantReadData(getMovieCastMembersFn);
+    movieCastsTable.grantReadWriteData(getMovieByIdFn);
+
     // REST API
     const api = new apig.RestApi(this, "RestAPI", {
       description: "demo api",
